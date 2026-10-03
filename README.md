@@ -4,6 +4,10 @@ Finds what makes your GitHub Actions workflows slower, costlier or riskier than 
 
 The checks and quick fixes are free. The checks run entirely inside VS Code; only the pin-to-SHA quick fix asks api.github.com for a commit. An optional Pro command adds a measured report from your repository's run history.
 
+## Install
+
+Download `ci-speed-check-1.0.0.vsix` from the [latest release](https://github.com/weioai/ci-speed-check-vscode/releases/latest), then in VS Code run **Extensions: Install from VSIX...** and pick the file. The same checks run in CI as the [CI Speed Check GitHub Action](https://github.com/marketplace/actions/ci-speed-check).
+
 ## Features
 
 - **Checks as you type.** Every file in `.github/workflows/` (`.yml` and `.yaml`) is checked when you open it, 300 ms after you stop typing, and when you save. Defects show as warnings and observations as information, in the editor and in the Problems panel. The problem code links to the explanation of that check on this page.
