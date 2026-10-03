@@ -1,0 +1,102 @@
+{
+  "name": "ci-speed-check",
+  "displayName": "CI Speed Check for GitHub Actions",
+  "description": "Flags missing cache, job timeouts, concurrency cancel, full-history checkouts and unpinned actions, with quick fixes.",
+  "version": "1.0.0",
+  "publisher": "weio",
+  "license": "MIT",
+  "author": {
+    "name": "Weio, Inc."
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/weioai/ci-speed-check-vscode.git"
+  },
+  "homepage": "https://github.com/weioai/ci-speed-check-vscode#readme",
+  "bugs": {
+    "url": "https://github.com/weioai/ci-speed-check-vscode/issues"
+  },
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#0b7a4b",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters"
+  ],
+  "keywords": [
+    "github actions",
+    "workflow",
+    "ci",
+    "cache",
+    "concurrency",
+    "timeout",
+    "pin",
+    "lint"
+  ],
+  "pricing": "Free",
+  "activationEvents": [
+    "workspaceContains:.github/workflows/*.yml",
+    "workspaceContains:.github/workflows/*.yaml",
+    "onLanguage:yaml",
+    "onLanguage:github-actions-workflow"
+  ],
+  "main": "./src/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "ciSpeedCheck.checkWorkspace",
+        "title": "CI Speed Check: Check workflows in this workspace"
+      },
+      {
+        "command": "ciSpeedCheck.historyReport",
+        "title": "CI Speed Check: Run-history report (Pro)"
+      },
+      {
+        "command": "ciSpeedCheck.setApiKey",
+        "title": "CI Speed Check: Set Weio API key"
+      },
+      {
+        "command": "ciSpeedCheck.clearApiKey",
+        "title": "CI Speed Check: Clear Weio API key"
+      }
+    ],
+    "configuration": {
+      "title": "CI Speed Check",
+      "properties": {
+        "ciSpeedCheck.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check .github/workflows/*.yml files and show findings in the editor and the Problems panel."
+        },
+        "ciSpeedCheck.historyRuns": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 300,
+          "description": "Pro run-history report: how many of the most recent workflow runs to analyse (1 to 300)."
+        },
+        "ciSpeedCheck.historyDays": {
+          "type": "integer",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Pro run-history report: how many days back to look (1 to 365)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "sync-core": "bash scripts/sync-core.sh",
+    "package": "vsce package"
+  }
+}

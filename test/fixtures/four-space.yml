@@ -1,0 +1,16 @@
+name: Four spaces
+on:
+    pull_request:
+        branches:
+            - main
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Setup Go
+              uses: actions/setup-go@v3
+              with:
+                  go-version: '1.22'
+            - name: Setup Ruby
+              uses: ruby/setup-ruby@v1
+            - run: make

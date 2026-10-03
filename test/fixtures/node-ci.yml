@@ -1,0 +1,37 @@
+# Typical Node CI with several defects.
+name: Node CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CI: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 20]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm test
+      - uses: codecov/codecov-action@v4   # coverage
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: softprops/action-gh-release@v2
