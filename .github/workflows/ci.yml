@@ -1,0 +1,40 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - run: npm test
+  ci-speed-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: This repository's workflows (must be clean)
+        uses: weioai/ci-speed-check@e88ee10bfc0b7ef958c0240a5a01803c1c07a18c # v1.0.0
+        with:
+          fail-on: defect
+      - name: The extension's test fixtures (deliberate defects; reported, never fails)
+        id: fixtures
+        uses: weioai/ci-speed-check@e88ee10bfc0b7ef958c0240a5a01803c1c07a18c # v1.0.0
+        with:
+          path: test/fixtures
+          annotate: false
+      - name: Outputs
+        env:
+          FINDINGS: ${{ steps.fixtures.outputs.findings }}
+          DEFECTS: ${{ steps.fixtures.outputs.defects }}
+        run: |
+          echo "fixtures: findings=$FINDINGS defects=$DEFECTS"
+          test "$DEFECTS" -gt 0
