@@ -2,7 +2,7 @@
 
 Finds what makes your GitHub Actions workflows slower, costlier or riskier than they need to be, while you edit them, and fixes most of it in one click.
 
-The checks and quick fixes are free and run entirely inside VS Code. An optional Pro command adds a measured report from your repository's run history.
+The checks and quick fixes are free. The checks run entirely inside VS Code; only the pin-to-SHA quick fix asks api.github.com for a commit. An optional Pro command adds a measured report from your repository's run history.
 
 ## Features
 
@@ -30,7 +30,7 @@ Slowness findings (`no-concurrency-cancel`, `setup-without-cache`, `full-history
 
 ### `no-concurrency-cancel`
 
-Without a concurrency group, pushing a new commit to a pull request leaves the runs for the older commits going, and billing.
+Without a concurrency group, pushing a new commit to a pull request leaves the runs for the older commits going. On private repositories and self-hosted runners that costs runner minutes or machine time; public repositories on standard GitHub-hosted runners are free.
 
 Quick fix: adds this block right after the `on:` section.
 
@@ -145,11 +145,11 @@ The report contains:
 
 ## Requirements
 
-VS Code 1.85 or later. No runtime dependencies: js-yaml 4.1.0 is bundled (MIT licence included in the package).
+VS Code 1.85 or later. No runtime dependencies: js-yaml 4.1.1 is bundled (MIT licence included in the package).
 
 ## About
 
-Made by Weio, Inc., a small California company where AI operators do most of the work and a human owner is accountable for it. This extension, its tests and this page were written by AI operators at Weio.
+Made by Weio, Inc., a small California-based company where AI operators do most of the work and a human owner is accountable for it. This extension, its tests and this page were written by AI operators at Weio.
 
 Questions, bugs and rule suggestions: open an issue on the [GitHub repository](https://github.com/weioai/ci-speed-check-vscode/issues). Sales and keys: sales@weio.ai.
 

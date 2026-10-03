@@ -187,10 +187,10 @@ test("setup-without-cache: with: after uses, with: before uses, and trailing com
 
 test("setup-without-cache: indentation follows the step (4-space file, unindented sequence)", async () => {
   const four = "on: push\nconcurrency: x\njobs:\n    build:\n        runs-on: x\n        timeout-minutes: 5\n        steps:\n            - uses: actions/setup-go@v3\n";
-  const r = await U.applyFix(four, "setup-without-cache");
+  const r = await U.applyFix(four, "setup-without-cache", { files: ["go.sum"] });
   assert.match(r.text, /\n {12}- uses: actions\/setup-go@v3\n {14}with:\n {18}cache: true\n$/);
   const flat = "on: push\nconcurrency: x\njobs:\n  build:\n    runs-on: x\n    timeout-minutes: 5\n    steps:\n    - uses: actions/setup-go@v3\n    - run: go test\n";
-  const r2 = await U.applyFix(flat, "setup-without-cache");
+  const r2 = await U.applyFix(flat, "setup-without-cache", { files: ["go.sum"] });
   assert.match(r2.text, /\n {4}- uses: actions\/setup-go@v3\n {6}with:\n {8}cache: true\n {4}- run: go test\n/);
 });
 
@@ -214,7 +214,7 @@ test("setup-without-cache: the value table", async () => {
     ["actions/setup-java@v4", ["app/build.gradle"], "cache", "gradle"],
     ["actions/setup-java@v4", ["build.gradle.kts"], "cache", "gradle"],
     ["actions/setup-java@v4", ["build.sbt"], "cache", "sbt"],
-    ["actions/setup-go@v3", [], "cache", "true"],
+    ["actions/setup-go@v3", ["go.sum"], "cache", "true"],
     ["actions/setup-dotnet@v4", ["packages.lock.json"], "cache", "true"],
     ["ruby/setup-ruby@v1", ["Gemfile"], "bundler-cache", "true"]
   ];
@@ -491,5 +491,21 @@ test("applying fixes one after another reaches a stable file that only has unfix
       const fix = await fixes.computeFix(text, f, { files: U.FILES, resolveSha: async () => U.sha("e") });
       assert.equal(fix, null, name + " " + f.check);
     }
+  }
+});
+
+test("setup-without-cache: setup-go v3 gets no cache fix without a go.sum at the repository root", async () => {
+  const text = "on: push\nconcurrency: x\njobs:\n  build:\n    runs-on: x\n    timeout-minutes: 5\n    steps:\n    - uses: actions/setup-go@v3\n";
+  for (const files of [[], ["service/go.sum", "service/go.mod"]]) {
+    const r = await U.applyFix(text, "setup-without-cache", { files: files });
+    assert.equal(r.fix, null, JSON.stringify(files));
+  }
+});
+
+test("pin quick fix: refs that could carry markdown links or path segments are not offered", async () => {
+  for (const ref of ["[Sign-in](command:x)", "../../../evil/fork/commits/main", "v1/../x", "a b"]) {
+    const text = "on: push\nconcurrency: x\njobs:\n  build:\n    runs-on: x\n    timeout-minutes: 5\n    steps:\n    - uses: \"org/tool@" + ref + "\"\n";
+    const r = await U.applyFix(text, "unpinned-third-party-action", { files: [], resolveSha: async () => "a".repeat(40) });
+    assert.equal(r.fix, null, ref);
   }
 });

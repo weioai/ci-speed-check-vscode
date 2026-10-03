@@ -1,7 +1,7 @@
 {
   "name": "ci-speed-check",
   "displayName": "CI Speed Check for GitHub Actions",
-  "description": "Flags missing cache, job timeouts, concurrency cancel, full-history checkouts and unpinned actions, with quick fixes.",
+  "description": "Flags missing cache, job timeouts, concurrency cancel, full-history checkouts and unpinned actions, with quick fixes. Optional paid run-history report (Weio API key).",
   "version": "1.0.0",
   "publisher": "weio",
   "license": "MIT",

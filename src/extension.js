@@ -145,24 +145,30 @@ function activate(context) {
   /* ----------------------------------------------------------- quick fixes */
 
   // Lock and build files that decide which cache value is right. Root-level names and any-depth names.
+  // They are looked up in the repository that holds the workflow (the folder above .github/workflows), which in a
+  // multi-repo workspace folder is not the workspace folder itself. Paths are relative to that repository.
   async function projectFiles(doc) {
     const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
     if (!folder) return [];
-    const key = folder.uri.toString();
+    const at = doc.uri.path.lastIndexOf("/.github/workflows/");
+    const base = at >= 0 ? doc.uri.with({ path: doc.uri.path.slice(0, at) || "/" }) : folder.uri;
+    const key = base.toString();
     const hit = filesCache.get(key);
     if (hit && Date.now() - hit.at < 10000) return hit.files;
     const exclude = "**/{node_modules,.git,.venv,venv}/**";
     let files = [];
     try {
       const found = await Promise.all([
-        vscode.workspace.findFiles(new vscode.RelativePattern(folder,
-          "{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,.yarnrc.yml,packages.lock.json,Gemfile}"), exclude, 50),
-        vscode.workspace.findFiles(new vscode.RelativePattern(folder,
+        vscode.workspace.findFiles(new vscode.RelativePattern(base,
+          "{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,.yarnrc.yml,packages.lock.json,Gemfile,go.sum}"), exclude, 50),
+        vscode.workspace.findFiles(new vscode.RelativePattern(base,
           "**/{requirements.txt,poetry.lock,Pipfile.lock,pom.xml,build.gradle,build.gradle.kts,build.sbt}"), exclude, 200)
       ]);
       found.forEach(function (list) {
         list.forEach(function (u) {
-          const rel = vscode.workspace.asRelativePath(u, false).split("\\").join("/");
+          const prefix = base.path.replace(/\/$/, "") + "/";
+          if (u.path.indexOf(prefix) !== 0) return;
+          const rel = u.path.slice(prefix.length);
           if (files.indexOf(rel) < 0) files.push(rel);
         });
       });
@@ -213,12 +219,16 @@ function activate(context) {
     providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
   }));
 
+  // Text from a workflow file must never reach a notification as-is: notifications render [label](command:...)
+  // as a clickable command link, and without square brackets there is no link.
+  function plain(s) { return String(s === undefined || s === null ? "" : s).replace(/[\[\]]/g, ""); }
+
   /* ------------------------------------------------------------ GitHub calls */
 
   const githubFetch = credit.guardedFetch(C.GITHUB_API_ORIGIN);
 
   async function silentGithubSession() {
-    for (const scopes of [["repo"], []]) {
+    for (const scopes of [[], ["repo"]]) {
       try {
         const s = await vscode.authentication.getSession("github", scopes, { silent: true });
         if (s && s.accessToken) return s;
@@ -245,6 +255,8 @@ function activate(context) {
   // The commit SHA that owner/repo@ref points at now. Uses a signed-in GitHub session when one exists already.
   async function resolveSha(owner, repo, ref) {
     const url = C.GITHUB_API_ORIGIN + "/repos/" + owner + "/" + repo + "/commits/" + ref.split("/").map(encodeURIComponent).join("/");
+    const want = "/repos/" + owner + "/" + repo + "/commits/";
+    if (new URL(url).pathname.indexOf(want) !== 0) throw new Error("the action name or tag has a form the quick fix does not look up");
     const session = await silentGithubSession();
     let res;
     try {
@@ -280,11 +292,11 @@ function activate(context) {
       try {
         fix = await fixes.computeFix(text, finding, { files: [], resolveSha: resolveSha });
       } catch (e) {
-        vscode.window.showErrorMessage("CI Speed Check: could not pin " + finding.action + "@" + finding.ref + ": " + credit.cleanText(e && e.message, 240));
+        vscode.window.showErrorMessage(plain("CI Speed Check: could not pin " + finding.action + "@" + finding.ref + ": " + credit.cleanText(e && e.message, 240)));
         return;
       }
       if (!fix) {
-        vscode.window.showWarningMessage("CI Speed Check: this step is written in a form the quick fix does not edit safely. Pin it by hand: " + finding.action + "@<full commit SHA> # " + finding.ref);
+        vscode.window.showWarningMessage(plain("CI Speed Check: this step is written in a form the quick fix does not edit safely. Pin it by hand: " + finding.action + "@") + "<full commit SHA> # " + plain(finding.ref));
         return;
       }
       if (doc.version !== startVersion) {
@@ -293,7 +305,7 @@ function activate(context) {
       }
       await vscode.workspace.applyEdit(toWorkspaceEdit(uri, fix.edits));
     } catch (e) {
-      vscode.window.showErrorMessage("CI Speed Check: the quick fix failed (" + credit.cleanText(e && e.message, 160) + ")");
+      vscode.window.showErrorMessage("CI Speed Check: the quick fix failed (" + plain(credit.cleanText(e && e.message, 160)) + ")");
     }
   }));
 
@@ -451,19 +463,10 @@ function activate(context) {
     const slug = await chooseRepository(pickFolder());
     if (!slug) return;
     const parts = slug.split("/");
-    // 3. GitHub sign-in (read access to the repository's Actions runs).
-    let session;
-    try {
-      session = await vscode.authentication.getSession("github", ["repo"], { createIfNone: true });
-    } catch (e) {
-      vscode.window.showErrorMessage("CI Speed Check: GitHub sign-in was cancelled or failed. No credit was used.");
-      return;
-    }
-    if (!session || !session.accessToken) {
-      vscode.window.showErrorMessage("CI Speed Check: no GitHub session. No credit was used.");
-      return;
-    }
-    const token = session.accessToken;
+    // 3. GitHub sign-in. A public repository's runs need no scope, so ask for none first; the broad "repo" scope is
+    // requested only when GitHub will not show the runs without it (private repositories).
+    let signedIn = await historySession(false);
+    if (!signedIn) return;
     const weioBase = credit.resolveWeioBase(process.env);
     if (!weioBase) {
       vscode.window.showErrorMessage("CI Speed Check: WEIO_API_BASE must be an https URL on weio.ai (or http on localhost). No credit was used.");
@@ -473,8 +476,32 @@ function activate(context) {
     const cfg = vscode.workspace.getConfiguration("ciSpeedCheck");
     const state = { used: false, remaining: null };
 
+    let token = signedIn.token;
     try {
-      const report = await vscode.window.withProgress({
+      let report;
+      try {
+        report = await readHistory(token);
+      } catch (e) {
+        if (!(e && e.name === "HistoryError" && e.code === "NO_ACCESS" && !signedIn.repo && !state.used)) throw e;
+        const ask = await vscode.window.showWarningMessage(
+          "CI Speed Check: GitHub does not show the run history of " + slug + " without repository access (private repositories " +
+          "need the \"repo\" permission; the extension only reads Actions runs). Sign in with it? No credit was used.",
+          { modal: true }, "Sign in with repository access");
+        if (ask !== "Sign in with repository access") return;
+        signedIn = await historySession(true);
+        if (!signedIn) return;
+        token = signedIn.token;
+        report = await readHistory(token);
+      }
+      return await showReport(report);
+    } catch (e) {
+      const shown = await describeHistoryError(e, slug, state, [key, token]);
+      // Not awaited: an error notification can stay open for a long time and must not keep the busy flag set.
+      presentError(shown.text, shown.buttons);
+    }
+
+    function readHistory(token) {
+      return vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification, title: "CI Speed Check: reading the run history of " + slug
       }, function () {
         return history.analyze({
@@ -490,6 +517,9 @@ function activate(context) {
           }
         });
       });
+    }
+
+    async function showReport(report) {
       const creditLine = state.used
         ? "One Weio credit was used for this report" + (state.remaining !== null ? "; " + state.remaining + " credits remain on this key." : ".")
         : "The run window held no runs, so no credit was used.";
@@ -497,18 +527,39 @@ function activate(context) {
       const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: md });
       await vscode.window.showTextDocument(doc, { preview: false });
       try { await vscode.commands.executeCommand("markdown.showPreview", doc.uri); } catch (e) { /* the source is open */ }
-    } catch (e) {
-      const shown = await describeHistoryError(e, slug, state, [key, token]);
-      // Not awaited: an error notification can stay open for a long time and must not keep the busy flag set.
-      presentError(shown.text, shown.buttons);
     }
   }
 
+  // {token, repo} or null (with the reason shown). Reuses an existing session silently before asking.
+  async function historySession(wantRepo) {
+    const order = wantRepo ? [["repo"]] : [[], ["repo"]];
+    for (const scopes of order) {
+      try {
+        const s = await vscode.authentication.getSession("github", scopes, { silent: true });
+        if (s && s.accessToken) return { token: s.accessToken, repo: scopes.length > 0 };
+      } catch (e) { /* none: fall through */ }
+    }
+    let session;
+    try {
+      session = await vscode.authentication.getSession("github", wantRepo ? ["repo"] : [], { createIfNone: true });
+    } catch (e) {
+      vscode.window.showErrorMessage("CI Speed Check: GitHub sign-in was cancelled or failed. No credit was used.");
+      return null;
+    }
+    if (!session || !session.accessToken) {
+      vscode.window.showErrorMessage("CI Speed Check: no GitHub session. No credit was used.");
+      return null;
+    }
+    return { token: session.accessToken, repo: wantRepo };
+  }
+
   async function describeHistoryError(e, slug, state, secrets) {
-    const used = state.used ? " A credit had already been used." : " No credit was used.";
+    const used = state.used ? " A credit had already been used." :
+      e && e.name === "CreditError" && e.kind === "network" ? " Weio did not confirm the credit; if one was used, it shows in your remaining balance." :
+      " No credit was used.";
     let text, buttons = [];
     if (e && e.name === "CreditError") {
-      text = "CI Speed Check: " + e.message + "." + (e.kind === "rate-limit" || e.kind === "server" || e.kind === "network" ? " Try again later." : "") + used;
+      text = "CI Speed Check: " + e.message + "." + (e.kind === "rate-limit" || e.kind === "server" ? " Try again later." : "") + used;
       if (e.kind === "invalid-key") {
         await context.secrets.delete(C.SECRET_KEY);
         text += " The stored key was removed.";
@@ -529,7 +580,7 @@ function activate(context) {
 
   async function presentError(text, buttons) {
     try {
-      const pick = await vscode.window.showErrorMessage(text, ...buttons);
+      const pick = await vscode.window.showErrorMessage(plain(text), ...buttons);
       if (pick === BUY) vscode.env.openExternal(vscode.Uri.parse(C.BUY_URL));
       else if (pick === "Enter a different key") await setApiKey();
     } catch (e) { /* the notification went away */ }

@@ -93,9 +93,34 @@ function parseKeyAt(line, col) {
   let m, key;
   if ((m = /^"((?:[^"\\]|\\.)*)"[ \t]*:(?=[ \t]|$)/.exec(s))) key = m[1].replace(/\\(.)/g, "$1");
   else if ((m = /^'((?:[^']|'')*)'[ \t]*:(?=[ \t]|$)/.exec(s))) key = m[1].replace(/''/g, "'");
-  else if ((m = /^([^\s#{}\[\],&*!|>%@`'"?:-][^#:]*?|-[^\s#:][^#:]*?)[ \t]*:(?=[ \t]|$)/.exec(s))) key = m[1];
+  else if ((m = plainKeyMatch(s))) key = m[1];
   else return null;
   return { key: key, value: stripComment(s.slice(m[0].length)).trim(), col: col };
+}
+
+// Same match as /^([^\s#{}\[\],&*!|>%@`'"?:-][^#:]*?|-[^\s#:][^#:]*?)[ \t]*:(?=[ \t]|$)/ without its quadratic
+// backtracking on long runs of spaces: [whole match, key] or null.
+function plainKeyMatch(s) {
+  const c0 = s.charAt(0);
+  let first;
+  if (c0 === "-") {
+    if (s.length < 2 || /[\s#:]/.test(s.charAt(1))) return null;
+    first = 2;
+  } else {
+    if (c0 === "" || /[\s#{}\[\],&*!|>%@`'"?:]/.test(c0)) return null;
+    first = 1;
+  }
+  for (let i = first; i < s.length; i++) {
+    const c = s.charAt(i);
+    if (c === "#") return null;
+    if (c === ":") {
+      if (i + 1 < s.length && s.charAt(i + 1) !== " " && s.charAt(i + 1) !== "\t") return null;
+      let k = i;
+      while (k > first && (s.charAt(k - 1) === " " || s.charAt(k - 1) === "\t")) k--;
+      return [s.slice(0, i + 1), s.slice(0, k)];
+    }
+  }
+  return null;
 }
 
 // "- " list item line: column where the item's first key starts, or -1.
@@ -301,7 +326,8 @@ function inferCache(action, files, mentions) {
       return one(found);
     }
     case "actions/setup-go":
-      return { value: true, source: null };
+      // setup-go v3 fails the step when caching is on and there is no go.sum at the repository root
+      return root.has("go.sum") ? { value: true, source: "go.sum" } : null;
     case "actions/setup-dotnet":
       return root.has("packages.lock.json") ? { value: true, source: "packages.lock.json" } : null;
     case "ruby/setup-ruby":
@@ -399,7 +425,9 @@ function planPin(S, finding, nth) {
   const action = String(finding.action || ""), ref = String(finding.ref === undefined ? "" : finding.ref);
   const parts = action.split("/");
   if (action.indexOf("docker://") === 0 || action.charAt(0) === "." || parts.length < 2 ||
-      !/^[A-Za-z0-9_.-]+$/.test(parts[0]) || !/^[A-Za-z0-9_.-]+$/.test(parts[1]) || !/^[^\s#"'@]+$/.test(ref)) return null;
+      !/^[A-Za-z0-9_.-]+$/.test(parts[0]) || !/^[A-Za-z0-9_.-]+$/.test(parts[1]) ||
+      !/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) ||
+      [parts[0], parts[1]].concat(ref.split("/")).some(function (p) { return p === "." || p === ".."; })) return null;
   const idx = locateIdx(S, finding, nth);
   const line = S.lines[idx];
   if (line === undefined) return null;

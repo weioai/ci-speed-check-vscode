@@ -63,7 +63,6 @@ test("postCredit: unreadable body gives body null; network failure and timeout b
 test("interpretCredit: success, and every documented failure keeps Weio's own text", () => {
   assert.deepEqual(credit.interpretCredit({ status: 200, body: { ok: true, credits_remaining: 7 } }), { creditsRemaining: 7 });
   assert.deepEqual(credit.interpretCredit({ status: 200, body: { ok: true } }), { creditsRemaining: null });
-  assert.deepEqual(credit.interpretCredit({ status: 200, body: {} }), { creditsRemaining: null });
   const cases = [
     [400, { ok: false, error: "bad ref" }, "bad-request", /bad ref/],
     [401, { ok: false, error: "invalid API key", buy: "https://example.invalid/x" }, "invalid-key", /invalid API key/],
@@ -72,7 +71,9 @@ test("interpretCredit: success, and every documented failure keeps Weio's own te
     [429, { ok: false, error: "rate limit exceeded" }, "rate-limit", /rate limit/],
     [503, null, "server", /HTTP 503/],
     [418, { ok: false }, "other", /HTTP 418/],
-    [200, { ok: false, error: "nope" }, "other", /nope/]
+    [200, { ok: false, error: "nope" }, "other", /nope/],
+    [200, {}, "other", /unexpected answer from Weio/],
+    [200, null, "other", /unexpected answer from Weio/]
   ];
   for (const [status, body, kind, re] of cases) {
     assert.throws(() => credit.interpretCredit({ status: status, body: body }), (e) => {

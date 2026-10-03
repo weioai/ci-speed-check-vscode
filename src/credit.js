@@ -87,9 +87,10 @@ async function postCredit(opts) {
 function interpretCredit(res) {
   const b = res && res.body && typeof res.body === "object" ? res.body : {};
   const status = res ? res.status : 0;
-  if (status === 200 && b.ok !== false) {
+  if (status === 200 && b.ok === true) {
     return { creditsRemaining: typeof b.credits_remaining === "number" && isFinite(b.credits_remaining) ? b.credits_remaining : null };
   }
+  if (status === 200 && b.ok !== false) throw new CreditError("other", "unexpected answer from Weio (HTTP 200 without a confirmed credit)", status);
   const text = cleanText(typeof b.error === "string" && b.error ? b.error : "HTTP " + status, 200);
   const kind = status === 400 ? "bad-request" : status === 401 ? "invalid-key" : status === 402 ? "no-credits" :
     status === 429 ? "rate-limit" : status >= 500 ? "server" : "other";

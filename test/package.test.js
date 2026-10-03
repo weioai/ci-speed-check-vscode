@@ -15,8 +15,9 @@ test("manifest: identity and marketplace fields", () => {
   assert.equal(pkg.version, "1.0.0");
   assert.equal(pkg.publisher, "weio");
   assert.equal(pkg.license, "MIT");
-  assert.ok(pkg.description.length > 40 && pkg.description.length <= 120, "description is " + pkg.description.length + " chars");
+  assert.ok(pkg.description.length > 40 && pkg.description.length <= 170, "description is " + pkg.description.length + " chars");
   ["cache", "timeout", "concurrency", "unpinned", "quick fixes"].forEach((w) => assert.ok(pkg.description.includes(w), w));
+  assert.ok(pkg.description.endsWith("Optional paid run-history report (Weio API key)."), "description says the run-history report is paid");
   assert.equal(pkg.repository.url, "https://github.com/weioai/ci-speed-check-vscode.git");
   assert.equal(pkg.homepage, "https://github.com/weioai/ci-speed-check-vscode#readme");
   assert.equal(pkg.bugs.url, "https://github.com/weioai/ci-speed-check-vscode/issues");

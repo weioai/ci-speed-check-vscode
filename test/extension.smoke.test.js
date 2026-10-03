@@ -530,8 +530,12 @@ test("Pro report, happy path: key from secret storage, repo from .git/config, Gi
   const calls = mockNet();
   await state.commands["ciSpeedCheck.historyReport"]();
 
-  // GitHub sign-in asks for the repo scope and may prompt
-  assert.deepEqual(state.sessionCalls, [{ provider: "github", scopes: ["repo"], opts: { createIfNone: true } }]);
+  // GitHub sign-in: reuse an existing session silently, else ask for no scope (public repos need none)
+  assert.deepEqual(state.sessionCalls, [
+    { provider: "github", scopes: [], opts: { silent: true } },
+    { provider: "github", scopes: ["repo"], opts: { silent: true } },
+    { provider: "github", scopes: [], opts: { createIfNone: true } }
+  ]);
 
   // network: runs list first, then exactly one credit POST, then job reads
   const urls = calls.map((c) => c.url);
@@ -597,11 +601,26 @@ test("Pro report: an empty window uses no credit", async () => {
   assert.match(state.untitledOpened[0].getText(), /The run window held no runs, so no credit was used\.\n$/);
 });
 
+test("Pro report: without the repo scope, a denied run list asks before requesting it; no credit is used", async () => {
+  const { state } = readyForPro();
+  const calls = mockNet({ github: (url, init, reply) => reply(404, { message: "Not Found" }) });
+  await state.commands["ciSpeedCheck.historyReport"]();
+  assert.equal(calls.filter((c) => c.url.includes("/api/credit")).length, 0);
+  const ask = state.messages.find((m) => m.kind === "warn");
+  assert.match(ask.text, /without repository access/);
+  assert.match(ask.text, /No credit was used\./);
+  assert.deepEqual(ask.items, [{ modal: true }, "Sign in with repository access"]);
+  assert.ok(!state.sessionCalls.some((c) => c.scopes.length && c.opts.createIfNone), "repo scope not requested without consent");
+  assert.ok(!state.messages.some((m) => m.kind === "error"));
+});
+
 test("Pro report: GitHub denying access stops before any credit is used", async () => {
   for (const status of [401, 403, 404]) {
     const { state } = readyForPro();
     const calls = mockNet({ github: (url, init, reply) => reply(status, { message: "nope" }) });
+    state.pickQueue.push("Sign in with repository access");
     await state.commands["ciSpeedCheck.historyReport"]();
+    assert.ok(state.sessionCalls.some((c) => c.scopes[0] === "repo" && c.opts.createIfNone), "asked for repo after consent");
     assert.equal(calls.filter((c) => c.url.includes("/api/credit")).length, 0, "status " + status);
     const err = state.messages.find((m) => m.kind === "error");
     assert.match(err.text, /did not allow this account to read the Actions run history of weioai\/https-check-action \(HTTP \d+\)/);
@@ -660,7 +679,7 @@ test("Pro report: Weio refusals show Weio's text and a way to buy; an invalid ke
   mockNet({ credit: () => { throw new TypeError("fetch failed (" + KEY + ")"); } });
   await ctx.state.commands["ciSpeedCheck.historyReport"]();
   err = ctx.state.messages.find((m) => m.kind === "error");
-  assert.match(err.text, /could not reach Weio to use a credit \(network error\)\. Try again later\. No credit was used\./);
+  assert.match(err.text, /could not reach Weio to use a credit \(network error\)\. Weio did not confirm the credit; if one was used, it shows in your remaining balance\./);
   noSecretsIn([err.text]);
 });
 

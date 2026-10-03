@@ -4,6 +4,7 @@
 const yaml = require("./core/vendor/js-yaml.min.js");
 const rules = require("./core/rules");
 const { WORKFLOW_PATH_RE, MAX_FILE_BYTES } = require("./constants");
+const MAX_FINDINGS = 1000;
 
 function isWorkflowPath(p) {
   return typeof p === "string" && WORKFLOW_PATH_RE.test(p);
@@ -39,6 +40,7 @@ function analyzeText(text, name) {
   } catch (e) {
     return { ok: false, reason: "parse-error", findings: [] };
   }
+  if (found.length > MAX_FINDINGS) found = found.slice(0, MAX_FINDINGS);   // YAML aliases can multiply findings
   const lines = splitLines(text);
   const seen = Object.create(null);
   const findings = found.map(function (f) {
@@ -48,7 +50,7 @@ function analyzeText(text, name) {
     const line = rules.locate(text, f, nth);
     const src = lines[line - 1] === undefined ? "" : lines[line - 1];
     const startChar = /^\s*/.exec(src)[0].length;
-    const endChar = Math.max(startChar, src.replace(/\s+$/, "").length);
+    const endChar = Math.max(startChar, src.trimEnd().length);
     return Object.assign({}, f, { line: line, startChar: startChar, endChar: endChar, nth: nth });
   });
   return { ok: true, findings: findings };

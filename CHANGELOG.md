@@ -10,3 +10,6 @@ Initial release.
 - Command "CI Speed Check: Check workflows in this workspace".
 - Optional Pro command "CI Speed Check: Run-history report (Pro)" with a Weio API key (one credit per report), plus "Set Weio API key" and "Clear Weio API key".
 - Settings `ciSpeedCheck.enable`, `ciSpeedCheck.historyRuns`, `ciSpeedCheck.historyDays`.
+- Pro report: runner minutes, jobs, steps, queue time and failures include earlier attempts of re-run workflows; a run's end time and superseded waste use its latest attempt. The superseded figure is described as at most what a `cancel-in-progress` group would cancel.
+- Pro report: names from GitHub are escaped so they cannot become links or emphasis in the report.
+- Bundles js-yaml 4.1.1 (fixes CVE-2025-64718, prototype pollution through a merge key).
